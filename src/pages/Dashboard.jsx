@@ -3,29 +3,77 @@ import { AlertMessage } from "../components/AlertMessage";
 import { WaterLevel } from "../components/WaterLevel";
 import { TemperatureCard } from "../components/TemperatureCard";
 import React, { useState, useEffect } from "react";
+import { ref, onValue } from "firebase/database";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { db } from "../firebase";
+
+const MAX_TANK_HEIGHT_CM = 50; // Set this to your tank's maximum height in cm
 
 export default function dashboard() {
   const [sensorData, setSensorData] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Simulate initial loading
-    setTimeout(() => {
-      setSensorData({ temperature: 28, waterLevel: 65 });
-      setIsLoading(false);
-    }, 1500);
+    const auth = getAuth();
 
-    // Simulate real-time updates
-    const intervalId = setInterval(() => {
-      setSensorData({
-        temperature: Math.floor(Math.random() * 10) + 25, // 25-34°C
-        waterLevel: Math.floor(Math.random() * 100), // 0-100%
-      });
-    }, 3000);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const uid = user.uid;
+        const dataRef = ref(db, `UsersData/${uid}`);
 
-    return () => clearInterval(intervalId);
+        const unsubscribeData = onValue(
+          dataRef,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+
+              // Ambil key timestamp terbaru
+              const timestamps = Object.keys(data);
+              const latestTimestamp = Math.max(...timestamps.map(Number));
+              const latestData = data[latestTimestamp];
+
+              const levelInCm = latestData.distance;
+
+              const waterLevelPercentage = Math.max(
+                0,
+                Math.min(
+                  100,
+                  ((MAX_TANK_HEIGHT_CM - levelInCm) / MAX_TANK_HEIGHT_CM) * 100
+                )
+              );
+
+              setSensorData({
+                temperature: latestData.temperature,
+                waterLevel: Math.round(waterLevelPercentage),
+                rawLevel: levelInCm,
+                deviceId: uid,
+              });
+
+              setLastUpdate(new Date(latestData.timestamp * 1000)); // Karena timestamp masih dalam detik
+              setError(null);
+            } else {
+              setError("No data found for this user.");
+            }
+            setIsLoading(false);
+          },
+          (error) => {
+            console.error("Error fetching data:", error);
+            setIsLoading(false);
+            setError(error.message);
+          }
+        );
+
+        return () => unsubscribeData();
+      } else {
+        setError("User not authenticated.");
+        setIsLoading(false);
+      }
+    });
+
+    return () => unsubscribeAuth();
   }, []);
-
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
@@ -64,7 +112,9 @@ export default function dashboard() {
             <div className="flex items-center justify-between mt-2">
               <span>Last Update:</span>
               <span className="text-gray-600 text-sm">
-                {isLoading ? "Loading..." : new Date().toLocaleTimeString()}
+                {isLoading
+                  ? "Loading..."
+                  : lastUpdate?.toLocaleTimeString() || "N/A"}
               </span>
             </div>
           </div>
