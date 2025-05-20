@@ -7,7 +7,7 @@ import { ref, onValue } from "firebase/database";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { db } from "../firebase";
 
-const MAX_TANK_HEIGHT_CM = 50; // Set this to your tank's maximum height in cm
+const MAX_TANK_HEIGHT_CM = 150; // Set this to your tank's maximum height in cm
 
 export default function dashboard() {
   const [sensorData, setSensorData] = useState({});
